@@ -1,0 +1,8 @@
+services:
+  recipe_app:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/work  # PCのファイルをDockerに連携
+    command: streamlit run app/main.py --server.port=8501 --server.address=0.0.0.0
