@@ -180,52 +180,69 @@ if check_password():
     tab1, tab2 = st.tabs(["🧪 レシピ入力", "📈データ分析ダッシュボード"])
 
     with tab1:
+        # ▼▼ 1. 過去データの呼び出しUI ▼▼
+        st.subheader("🔄 過去データの呼び出し・編集")
+        if os.path.isfile(CSV_PATH):
+            df_history = pd.read_csv(CSV_PATH)
+            options = ["(新規作成)"] + (df_history['レシピID'] + " : " + df_history['レシピ名']).tolist()
+            selected_past = st.selectbox("編集・コピーしたい過去データを選択", options)
+
+            if st.button("📥 フォームにセットする"):
+                if selected_past == "(新規作成)":
+                    st.session_state.clear() # 一旦リセットしてまっさらに
+                else:
+                    # 選んだデータをセッション（記憶）に書き込む
+                    target_id = selected_past.split(" : ")[0]
+                    row = df_history[df_history['レシピID'] == target_id].iloc[0]
+                    st.session_state.c_id = row['レシピID']
+                    st.session_state.c_name = row['レシピ名']
+                    st.session_state.c_brand = row['米粉ブランド']
+                    st.session_state.c_fw = float(row['米粉重量'])
+                    st.session_state.c_servings = int(row['焼き上がり個数'])
+                    st.session_state.c_v_score = int(row['粘度スコア'])
+                    st.session_state.c_memo = str(row['評価メモ']) if pd.notna(row['評価メモ']) else ""
+                    st.session_state.c_img_path = str(row['画像パス']) if pd.notna(row['画像パス']) else ""
+                    st.session_state.recipe_data = pd.DataFrame(json.loads(row['材料詳細']))
+                st.rerun() # 画面を更新してフォームに反映！
+        st.divider()
+
+        # ▼▼ 2. セッションから値を取得（無ければ初期値） ▼▼
+        current_id = st.session_state.get("c_id", next_id)
+        current_name = st.session_state.get("c_name", "")
+        current_brand = st.session_state.get("c_brand", "西友 1番粉")
+        current_fw = st.session_state.get("c_fw", 100.0)
+        current_servings = st.session_state.get("c_servings", 1)
+        current_v_score = st.session_state.get("c_v_score", 5)
+        current_memo = st.session_state.get("c_memo", "")
+        current_img_path = st.session_state.get("c_img_path", "")
+
         col_meta, col_calc = st.columns([1, 1.2])
 
         with col_meta:
             st.subheader("🧪 レシピ情報")
-            recipe_id = st.text_input("レシピID", value=next_id, disabled=True)
-            recipe_name = st.text_input("レシピ名")
-            flour_brand = st.text_input("使用米粉ブランド", value="西友 1番粉")
-            flour_weight = st.number_input("米粉の重量 (g)", value=100.0)
+            recipe_id = st.text_input("レシピID", value=current_id, disabled=True)
+            recipe_name = st.text_input("レシピ名", value=current_name)
+            flour_brand = st.text_input("使用米粉ブランド", value=current_brand)
+            flour_weight = st.number_input("米粉の重量 (g)", value=current_fw)
             category = st.selectbox("カテゴリ", ["焼き菓子（マフィン）", "パン", "ケーキ", "一般料理"])
-            servings = st.number_input("焼き上がり個数（個）", min_value=1, value=1, step=1)
+            servings = st.number_input("焼き上がり個数（個）", min_value=1, value=current_servings, step=1)
 
         with col_calc:
             st.subheader("⚖️ 材料・成分計算")
-            # 登録済み材料名をサジェストに出すための準備
             ingredients_list = list(master_data.keys())
-            # --- 修正ポイント：セッションステートでデータを保持する ---
+            
             if "recipe_data" not in st.session_state:
-                # 最初だけ初期データを作る
                 st.session_state.recipe_data = pd.DataFrame([
                     {"材料名": ingredients_list[0] if ingredients_list else "", "分量": 0.0, "区分": "生地"}
                 ] * 3)
+                
             edited_df = st.data_editor(
                 st.session_state.recipe_data,
                 column_config={
-                    "材料名": st.column_config.SelectboxColumn(
-                        "材料名",
-                        help="マスターから材料を選択してください",
-                        options=ingredients_list,
-                        required=True,
-                    ),
-                    "分量": st.column_config.NumberColumn(
-                        "分量（g）",
-                        min_value=0.0,
-                        default=0.0,
-                        format="%.1f",
-                        required=True,
-                    ),
-                    "区分": st.column_config.SelectboxColumn(
-                        "区分",
-                        options=[
-                            "生地",
-                            "トッピング"
-                        ],
-                        default="生地"
-                    )
-                } ,
+                    "材料名": st.column_config.SelectboxColumn("材料名", options=ingredients_list, required=True),
+                    "分量": st.column_config.NumberColumn("分量（g）", min_value=0.0, format="%.1f", required=True),
+                    "区分": st.column_config.SelectboxColumn("区分", options=["生地", "トッピング"], default="生地")
+                },
                 num_rows="dynamic",
                 use_container_width=True,
                 key="data_editor_widget"
@@ -233,52 +250,23 @@ if check_password():
 
             net_w, h_ratio, total_kcal, pfc, total_p, total_f, total_c = calculate_metrics(edited_df, flour_weight, flour_brand, master_data)
 
-        # 表示部分
+        # --- 表示部分 ---
         st.subheader("🔋 栄養分析 (PFC)")
         m1, m2, m3 = st.columns(3)
         m1.metric("総熱量", f"{int(total_kcal)} kcal")
         m2.metric("有効水分比率", f"{h_ratio:.2f}%")
         m3.metric("P:F:C 比率", f"{int(pfc[0]*100)} : {int(pfc[1]*100)} : {int(pfc[2]*100)}")
-        # --- PFC円グラフの作成 ---
-        # 1. データの準備（名前と数値のペアを作る）
-        st.divider() # 区切り線を入れると見やすいです
+
+        st.divider()
         st.subheader("🔋 PFCバランス（エネルギー比率）")
-
-        pfc_data = pd.DataFrame({
-            "成分": ["タンパク質 (P)", "脂質 (F)", "炭水化物 (C)"],
-            "比率": [pfc[0], pfc[1], pfc[2]]
-        })
-
-        # 2. グラフの形を作る
-        # hole=0.4 にすると、真ん中が空いたオシャレな「ドーナツチャート」になります
-        fig_pfc = px.pie(
-            pfc_data, 
-            values="比率", 
-            names="成分", 
-            hole=0.4,
-            color="成分",
-            # 管理栄養士っぽく色を固定（P:黄色, F:赤, C:緑など）
-            color_discrete_map={"タンパク質 (P)": "#FFD700", "脂質 (F)": "#FF4B4B", "炭水化物 (C)": "#28A745"}
-        )
-
-        # グラフの余白や文字サイズを調整（スッキリ見せるコツ）
-        fig_pfc.update_layout(
-            showlegend=True,
-            margin=dict(t=20, b=20, l=20, r=20),
-            height=300
-        )
-
-        # 3. 画面に表示
+        pfc_data = pd.DataFrame({"成分": ["タンパク質 (P)", "脂質 (F)", "炭水化物 (C)"], "比率": [pfc[0], pfc[1], pfc[2]]})
+        fig_pfc = px.pie(pfc_data, values="比率", names="成分", hole=0.4, color="成分", color_discrete_map={"タンパク質 (P)": "#FFD700", "脂質 (F)": "#FF4B4B", "炭水化物 (C)": "#28A745"})
+        fig_pfc.update_layout(showlegend=True, margin=dict(t=20, b=20, l=20, r=20), height=300)
         st.plotly_chart(fig_pfc, use_container_width=True)
         st.divider()
 
-        # 4. 1個当たりの成分計算
         st.subheader(f"🧁 1個あたりの推定値（全{servings}個中）")
-
-        # 全体重量の概算（材料の合計）
         total_weight = edited_df["分量"].sum() + flour_weight
-
-        # カラムを分けて1個あたりの数値を表示
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("エネルギー", f"{int(total_kcal / servings)} kcal")
         c2.metric("タンパク質", f"{(total_p / servings):.1f} g")
@@ -297,30 +285,51 @@ if check_password():
                 v_score = st.select_slider(
                     "粘度10段階スコア",
                     options=list(VISCOSITY_TABLE.keys()),
-                    value=5,
+                    value=current_v_score,
                     format_func=lambda x: f"Score {x}"
                 )
                 st.info(f"現在の定義: {VISCOSITY_TABLE[v_score]}")
 
             with c2:
                 st.subheader("📝 出来上がり評価")
-                eval_text = st.text_area("食感、焼き色、改善メモ")
+                eval_text = st.text_area("食感、焼き色、改善メモ", value=current_memo)
+
+                if current_img_path != "":
+                    st.write("📸 **現在登録されている画像:**")
+                    paths = current_img_path.split(',')
+                    cols = st.columns(len(paths))
+                    for i, p in enumerate(paths):
+                        if os.path.exists(p):
+                            cols[i].image(p, use_container_width=True)
+
+                st.write("※画像を再アップロードすると上書きされます（空のままだと過去の画像が維持されます）")
                 img_files = st.file_uploader("画像（断面・全体）", accept_multiple_files=True)
 
-            submitted = st.form_submit_button("🧪 研究データをCSVに記録する")
+            # ▼▼ 3. 保存ボタン（上書き対応） ▼▼
+            submitted = st.form_submit_button("🧪 研究データをCSVに保存（上書き）する")
 
         # --- 保存処理 ---
         if submitted:
             st.session_state.recipe_data = edited_df
-            # 1. 画像保存
-            img_paths = []
-            for i, file in enumerate(img_files):
-                path = os.path.join(IMAGE_DIR, f"{recipe_id}_{i}.jpg")
-                with open(path, "wb") as f:
-                    f.write(file.getbuffer())
-                img_paths.append(path)
+            
+            # 画像の処理（新規があれば保存、なければ既存パスを維持）
+            if img_files:
+                img_paths = []
+                for i, file in enumerate(img_files):
+                    path = os.path.join(IMAGE_DIR, f"{recipe_id}_{i}.jpg")
+                    with open(path, "wb") as f:
+                        f.write(file.getbuffer())
+                    img_paths.append(path)
+                final_img_path = ",".join(img_paths)
+            else:
+                # 既存のレコードがあればその画像パスを引き継ぐ
+                final_img_path = ""
+                if os.path.isfile(CSV_PATH):
+                    df_exist = pd.read_csv(CSV_PATH)
+                    if recipe_id in df_exist["レシピID"].values:
+                        old_path = df_exist.loc[df_exist["レシピID"] == recipe_id, "画像パス"].values[0]
+                        final_img_path = str(old_path) if pd.notna(old_path) else ""
 
-            # 2. 保存用データ構築
             new_record = {
                 "作成日": datetime.now().strftime("%Y-%m-%d"),
                 "レシピID": recipe_id,
@@ -328,7 +337,7 @@ if check_password():
                 "米粉ブランド": flour_brand,
                 "米粉重量": flour_weight,
                 "焼き上がり個数": servings,
-                "総熱量": total_kcal,        # ← これも追加しておくと楽
+                "総熱量": total_kcal,
                 "タンパク質総量": total_p,
                 "脂質総量": total_f,
                 "炭水化物総量": total_c,
@@ -336,20 +345,28 @@ if check_password():
                 "粘度スコア": v_score,
                 "評価メモ": eval_text,
                 "材料詳細": edited_df.to_json(orient='records', force_ascii=False),
-                "画像パス": ",".join(img_paths)
+                "画像パス": final_img_path
             }
 
-            # 3. CSV保存
             df_to_save = pd.DataFrame([new_record])
+            
             if not os.path.isfile(CSV_PATH):
                 df_to_save.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
             else:
-                df_to_save.to_csv(CSV_PATH, mode='a', header=False, index=False, encoding="utf-8-sig")
+                df_exist = pd.read_csv(CSV_PATH)
+                if recipe_id in df_exist["レシピID"].values:
+                    # ★既存データを上書き★
+                    idx = df_exist[df_exist["レシピID"] == recipe_id].index
+                    df_exist.loc[idx] = df_to_save.values[0]
+                    df_exist.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
+                else:
+                    # 新規追加
+                    df_to_save.to_csv(CSV_PATH, mode='a', header=False, index=False, encoding="utf-8-sig")
 
             st.success(f"研究記録 {recipe_id} を保存しました！")
             st.balloons()
-
-            pass
+            
+    # これより下は with tab2: が続きます
     with tab2:
         st.header("📊 研究データの相関分析")
 
@@ -360,11 +377,11 @@ if check_password():
                 # 1. 散布図：有効水分比率 vs 粘度スコア
                 st.subheader("💧 水分比率と粘度の相関")
                 st.scatter_chart(
-                    data=df_all,
-                    x="有効水分比率",
-                    y="粘度スコア",
-                    color="米粉ブランド",  # ブランドごとに色分けされる！
-                    size=100
+                data=df_all,
+                x="有効水分比率",
+                y="粘度スコア",
+                color="米粉ブランド",  # ブランドごとに色分けされる！
+                size=100
                 )
 
                 # 2. 米粉ごとの傾向（表や平均値など）
