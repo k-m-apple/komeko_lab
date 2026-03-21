@@ -43,7 +43,7 @@ if os.path.exists(CSV_PATH):
                         # 画像がない場合の代わりのグレー背景ボックス
                         st.markdown("""
                         <div style='background-color: #f0f2f6; height: 150px; display: flex; align-items: center; justify-content: center; border-radius: 5px;'>
-                            <span style='font-size: 50px;'>🧁</span>
+                            <span style='font-size: 50px;'>🐈</span>
                         </div>
                         <br>
                         """, unsafe_allow_html=True)
