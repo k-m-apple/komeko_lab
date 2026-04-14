@@ -436,7 +436,7 @@ if check_password():
                 # ⚠️ ここでX軸とY軸の「枠」を固定します！
                 # もし水分150%以上のデータが飛んでいっても、グラフはこの枠を保ちます
                 fig_scatter.update_layout(
-                    xaxis=dict(title="有効水分比率 (%)", range=[0, 150]), # 水分は0〜150%の間で固定
+                    xaxis=dict(title="有効水分比率 (%)", range=[0, 200]), # 水分は0〜150%の間で固定
                     yaxis=dict(title="粘度スコア (1〜10)", range=[0, 11]), # スコアは1〜10の範囲で固定
                     margin=dict(l=20, r=20, t=30, b=20)
                 )
